@@ -55,6 +55,12 @@ public abstract class AbstractParallelEoSStreamProcessor<K, V> implements Parall
 
     public static final String MDC_INSTANCE_ID = "pcId";
 
+    /**
+     * Key for the work container descriptor that will be added to the {@link MDC diagnostic context} while inside a
+     * user function.
+     */
+    public static final String MDC_WORK_CONTAINER_DESCRIPTOR = "offset";
+
     @Getter(PROTECTED)
     protected final ParallelConsumerOptions options;
 
@@ -918,9 +924,9 @@ public abstract class AbstractParallelEoSStreamProcessor<K, V> implements Parall
 
         log.trace("Processing drained work {}...", results.size());
         for (var work : results) {
-            MDC.put("offset", work.toString());
+            MDC.put(MDC_WORK_CONTAINER_DESCRIPTOR, work.toString());
             wm.handleFutureResult(work);
-            MDC.remove("offset");
+            MDC.remove(MDC_WORK_CONTAINER_DESCRIPTOR);
         }
     }
 
@@ -1064,7 +1070,7 @@ public abstract class AbstractParallelEoSStreamProcessor<K, V> implements Parall
         try {
             if (log.isDebugEnabled()) {
                 // first offset of the batch
-                MDC.put("offset", workContainerBatch.get(0).offset() + "");
+                MDC.put(MDC_WORK_CONTAINER_DESCRIPTOR, workContainerBatch.get(0).offset() + "");
             }
             log.trace("Pool received: {}", workContainerBatch);
 
