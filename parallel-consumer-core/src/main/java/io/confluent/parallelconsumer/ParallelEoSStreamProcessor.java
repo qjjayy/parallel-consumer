@@ -56,7 +56,7 @@ public class ParallelEoSStreamProcessor<K, V> extends AbstractParallelEoSStreamP
         }
 
         // wrap user func to add produce function
-        Function<PollContextInternal<K, V>, List<ConsumeProduceResult<K, V, K, V>>> wrappedUserFunc = context -> {
+        Function<PollContextInternal<K, V>, List<?>> wrappedUserFunc = context -> {
             List<ProducerRecord<K, V>> recordListToProduce = carefullyRun(userFunction, context.getPollContext());
 
             if (recordListToProduce.isEmpty()) {
