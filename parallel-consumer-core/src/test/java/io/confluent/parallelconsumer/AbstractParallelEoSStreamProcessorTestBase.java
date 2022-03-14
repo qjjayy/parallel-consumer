@@ -9,8 +9,10 @@ import io.confluent.csid.utils.KafkaTestUtils;
 import io.confluent.csid.utils.LongPollingMockConsumer;
 import io.confluent.parallelconsumer.ParallelConsumerOptions.ProcessingOrder;
 import io.confluent.parallelconsumer.internal.AbstractParallelEoSStreamProcessor;
+import io.confluent.parallelconsumer.model.CommitHistory;
 import io.confluent.parallelconsumer.state.WorkContainer;
 import io.confluent.parallelconsumer.state.WorkManager;
+import io.confluent.parallelconsumer.truth.CommitHistorySubject;
 import io.confluent.parallelconsumer.truth.LongPollingMockConsumerSubject;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -79,7 +81,7 @@ public abstract class AbstractParallelEoSStreamProcessorTestBase {
 
     protected AbstractParallelEoSStreamProcessor<String, String> parentParallelConsumer;
 
-    public static int defaultTimeoutSeconds = 30;
+    public static int defaultTimeoutSeconds = 10;
 
     public static Duration defaultTimeout = ofSeconds(defaultTimeoutSeconds);
     protected static long defaultTimeoutMs = defaultTimeout.toMillis();
@@ -334,10 +336,16 @@ public abstract class AbstractParallelEoSStreamProcessorTestBase {
         assertThat(commits).containsAll(offsets);
     }
 
-    private List<Integer> getCommitHistoryFlattened() {
+    public List<Integer> getCommitHistoryFlattened() {
         return (isUsingTransactionalProducer())
                 ? ktu.getProducerCommits(producerSpy)
                 : extractAllPartitionsOffsetsSequentially();
+    }
+
+    public List<OffsetAndMetadata> getCommitHistoryFlattenedMeta() {
+        return (isUsingTransactionalProducer())
+                ? ktu.getProducerCommitsMeta(producerSpy)
+                : extractAllPartitionsOffsetsSequentiallyMeta();
     }
 
     public void assertCommits(List<Integer> offsets, String description) {
@@ -378,14 +386,20 @@ public abstract class AbstractParallelEoSStreamProcessorTestBase {
      * Flattens the offsets of all partitions into a single sequential list
      */
     protected List<Integer> extractAllPartitionsOffsetsSequentially() {
+        return extractAllPartitionsOffsetsSequentiallyMeta().stream().
+                map(x -> (int) x.offset()) // int cast a luxury in test context - no big offsets
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Flattens the offsets of all partitions into a single sequential list
+     */
+    protected List<OffsetAndMetadata> extractAllPartitionsOffsetsSequentiallyMeta() {
         // copy the list for safe concurrent access
         List<Map<TopicPartition, OffsetAndMetadata>> history = new ArrayList<>(consumerSpy.getCommitHistoryInt());
         return history.stream()
                 .flatMap(commits ->
-                        {
-                            Collection<OffsetAndMetadata> values = new ArrayList<>(commits.values()); // 4 debugging
-                            return values.stream().map(meta -> (int) meta.offset()); // int cast a luxury in test context - no big offsets
-                        }
+                        commits.values().stream()
                 ).collect(Collectors.toList());
     }
 
@@ -404,6 +418,12 @@ public abstract class AbstractParallelEoSStreamProcessorTestBase {
 
     public void assertCommits(List<Integer> offsets) {
         assertCommits(offsets, Optional.empty());
+    }
+
+    public CommitHistorySubject assertCommits() {
+        List<OffsetAndMetadata> commitHistoryFlattened = getCommitHistoryFlattenedMeta();
+        CommitHistory actual = new CommitHistory(commitHistoryFlattened);
+        return CommitHistorySubject.assertThat(actual);
     }
 
     /**
