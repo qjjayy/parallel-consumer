@@ -16,6 +16,7 @@ import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.TopicPartition;
 import org.assertj.core.api.AbstractListAssert;
+import org.assertj.core.api.Assertions;
 import org.assertj.core.api.ObjectAssert;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,9 @@ import pl.tlinkowski.unij.api.UniLists;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
 
+import static com.google.common.truth.Truth.assertWithMessage;
 import static io.confluent.csid.utils.Range.range;
 import static io.confluent.parallelconsumer.ParallelConsumerOptions.ProcessingOrder.*;
 import static java.time.Duration.ofSeconds;
@@ -74,20 +77,23 @@ class WorkManagerTest {
             log.debug("Heard some successful work: {}", work);
             successfulWork.add(work);
         });
-        int partition = 0;
-        assignPartition(partition);
     }
 
     private void assignPartition(final int partition) {
         wm.onPartitionsAssigned(UniLists.of(new TopicPartition(INPUT_TOPIC, partition)));
     }
 
+    private void registerSomeWork() {
+        registerSomeWork(0);
+    }
+
     /**
      * Adds 3 units of work
      */
-    private void registerSomeWork() {
+    private void registerSomeWork(int partition) {
+        assignPartition(partition);
+
         String key = "key-0";
-        int partition = 0;
         var rec0 = makeRec("0", key, partition);
         var rec1 = makeRec("1", key, partition);
         var rec2 = makeRec("2", key, partition);
@@ -531,7 +537,7 @@ class WorkManagerTest {
         NavigableSet<Long> ascendingOrder = treeMap.navigableKeySet();
         Object[] objects = ascendingOrder.toArray();
 
-        assertThat(objects).containsExactly(0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L);
+        Assertions.assertThat(objects).containsExactly(0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L);
     }
 
     /**
@@ -614,6 +620,55 @@ class WorkManagerTest {
             Truth.assertThat(work.get().offset()).isEqualTo(1);
             Truth.assertThat(work.get().getCr().value()).isEqualTo("1");
         }
+    }
+
+    /**
+     * Checks that when using shards are not starved when there's enough work queued to satisfy poll request from the
+     * initial request (without needing to iterate to other shards)
+     */
+    @Test
+    void starvation() {
+        setupWorkManager(ParallelConsumerOptions.builder()
+                .ordering(PARTITION)
+                .build());
+
+        registerSomeWork(0);
+        registerSomeWork(1);
+        registerSomeWork(2);
+
+        var allWork = new ArrayList<WorkContainer<String, String>>();
+
+        {
+            var work = wm.getWorkIfAvailable(2);
+            allWork.addAll(work);
+
+            assertWithMessage("Should be able to get 2 records of work, one from each partition shard")
+                    .that(work).hasSize(2);
+
+            //
+            var tpOne = work.get(0).getTopicPartition();
+            var tpTwo = work.get(1).getTopicPartition();
+            assertWithMessage("The partitions should be different")
+                    .that(tpOne).isNotEqualTo(tpTwo);
+
+        }
+
+        {
+            var work = wm.getWorkIfAvailable(2);
+            assertWithMessage("Should be able to get only 1 more, from the third shard")
+                    .that(work).hasSize(1);
+            allWork.addAll(work);
+
+            //
+            var tpOne = work.get(0).getTopicPartition();
+        }
+
+        assertWithMessage("TPs all unique")
+                .that(allWork.stream()
+                        .map(WorkContainer::getTopicPartition)
+                        .collect(Collectors.toList()))
+                .containsNoDuplicates();
+
     }
 
 }

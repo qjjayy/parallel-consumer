@@ -166,7 +166,7 @@ public class WorkManager<K, V> implements ConsumerRebalanceListener {
     /**
      * Get work with no limit on quantity, useful for testing.
      */
-    public <R> List<WorkContainer<K, V>> getWorkIfAvailable() {
+    public List<WorkContainer<K, V>> getWorkIfAvailable() {
         return getWorkIfAvailable(Integer.MAX_VALUE);
     }
 
@@ -180,7 +180,7 @@ public class WorkManager<K, V> implements ConsumerRebalanceListener {
             return UniLists.of();
         }
 
-        int ingested = tryToEnsureQuantityOfWorkQueuedAvailable(requestedMaxWorkToRetrieve);
+        int ingested = tryToEnsureQuantityOfWorkQueuedAvailable(Integer.MAX_VALUE);
 
         //
         var work = sm.getWorkIfAvailable(requestedMaxWorkToRetrieve);
