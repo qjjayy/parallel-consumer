@@ -222,7 +222,7 @@ public class VertxParallelEoSStreamProcessor<K, V> extends ExternalEngine<K, V>
      * Sends the message to the Vert.x PC Vertical for processing
      */
     @Override
-    protected void submitWorkToPoolInner(final Function<List<ConsumerRecord<K, V>>, List<?>> usersFunction,
+    protected void submitWorkToPoolInner(final Function<PollContextInternal<K, V>, List<?>> usersFunction,
                                          final Consumer<?> callback,
                                          final List<WorkContainer<K, V>> batch) {
         // convert from Vert.x Future to Java Future
